@@ -1,6 +1,7 @@
 import os
 import uuid
 import subprocess
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -15,10 +16,10 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Your frontend URL
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods, including OPTIONS
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 class TextInput(BaseModel):
@@ -37,48 +38,49 @@ async def generate_model(input: TextInput):
     """
     text = input.text
     try:
-        # Define absolute path to generated_meshes directory
-        current_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of app.py (e.g., backend/)
-        project_root = os.path.dirname(current_dir)  # Parent directory (e.g., Text-to-3D/)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
         output_dir = os.path.join(project_root, "generated_meshes")
-        os.makedirs(output_dir, exist_ok=True)  # Create directory if it doesn’t exist
+        os.makedirs(output_dir, exist_ok=True)
         
-        # Generate unique file names with absolute paths
         base_name = os.path.join(output_dir, str(uuid.uuid4()))
         obj_file = f"{base_name}.obj"
-        glb_file = f"{base_name}.glb"  # Changed to .glb
+        glb_file = f"{base_name}.glb"
         
         logger.info("Generating point cloud for prompt: '%s'", text)
-        point_cloud = generate_point_cloud(text)
+        point_cloud = generate_point_cloud(text)  # Use base1B model
         logger.info("Point cloud generation completed")
         
         logger.info("Starting mesh generation...")
-        mesh = point_cloud_to_mesh(point_cloud.coords)
+        # Extract colors from point cloud channels
+        colors = None
+        if 'R' in point_cloud.channels and 'G' in point_cloud.channels and 'B' in point_cloud.channels:
+            colors = np.stack(
+                [point_cloud.channels['R'], point_cloud.channels['G'], point_cloud.channels['B']],
+                axis=-1
+            )
+        mesh = point_cloud_to_mesh(point_cloud.coords, colors)  # Pass colors to mesh
         logger.info("Mesh generation completed")
         
         logger.info("Saving mesh as OBJ to %s", obj_file)
         save_mesh_as_obj(mesh, obj_file)
         logger.info("OBJ saved successfully")
         
-        # Verify OBJ file exists
         if not os.path.exists(obj_file):
             raise RuntimeError(f"OBJ file not found at {obj_file} after saving")
         
         logger.info("Converting to GLB...")
         blender_script = os.path.join(current_dir, "blender_script.py")
-        blender_cmd = [
-            "blender", "-b", "-P", blender_script, "--", obj_file, glb_file
-        ]
+        blender_cmd = ["blender", "-b", "-P", blender_script, "--", obj_file, glb_file]
         subprocess.run(blender_cmd, check=True, cwd=current_dir)
         logger.info("GLB conversion completed")
         
         if not os.path.exists(glb_file):
             raise RuntimeError(f"GLB file not found at {glb_file}")
         
-        # Return the GLB file
         return FileResponse(
             glb_file,
-            media_type="model/gltf-binary",  # Updated for GLB
+            media_type="model/gltf-binary",
             filename=os.path.basename(glb_file)
         )
     
@@ -87,7 +89,6 @@ async def generate_model(input: TextInput):
         raise HTTPException(status_code=500, detail=f"Model generation failed: {str(e)}")
     
     finally:
-        # Optional cleanup of OBJ file
         if 'obj_file' in locals() and os.path.exists(obj_file):
             os.remove(obj_file)
 

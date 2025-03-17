@@ -143,7 +143,7 @@ class PointEModel:
             logger.error(f"Failed to save point cloud: {str(e)}")
             raise RuntimeError(f"Failed to save point cloud: {str(e)}")
     
-    def convert_to_mesh(self, point_cloud, output_path=None, grid_size=32):
+    def convert_to_mesh(self, point_cloud, output_path=None, grid_size=64):
         """
         Convert a point cloud to a mesh using the SDF model.
         
@@ -224,7 +224,7 @@ def generate_point_cloud(text_prompt):
     model = get_point_e_model()
     return model.generate_point_cloud(text_prompt)
 
-def generate_mesh_from_text(text_prompt, output_path=None, grid_size=32):
+def generate_mesh_from_text(text_prompt, output_path=None, grid_size=64):
     """
     Generate a 3D mesh from text using the global PointEModel.
 

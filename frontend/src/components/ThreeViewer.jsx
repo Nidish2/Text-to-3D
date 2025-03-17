@@ -6,14 +6,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 function ThreeViewer({ gltfUrl }) {
   const mountRef = useRef(null);
 
-  // Memoize scene objects to prevent recreation on every render
   const sceneObjects = React.useMemo(() => {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
-      75, // Field of view
-      window.innerWidth / window.innerHeight, // Aspect ratio (will be updated later)
-      0.1, // Near plane
-      1000 // Far plane
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
     );
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -22,41 +21,33 @@ function ThreeViewer({ gltfUrl }) {
 
   const { scene, camera, renderer, controls } = sceneObjects;
 
-  // Setup scene, renderer, and controls
   useEffect(() => {
     const mount = mountRef.current;
     const width = mount.clientWidth;
     const height = mount.clientHeight;
 
-    // Configure renderer
     renderer.setSize(width, height);
-    renderer.setClearColor(0xe5e7eb, 1); // Match bg-gray-200 to debug rendering
+    renderer.setClearColor(0xe5e7eb, 1);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     mount.appendChild(renderer.domElement);
 
-    // Initial camera setup
     camera.position.set(0, 5, 10);
-    camera.lookAt(0, 0, 0); // Ensure camera looks at the origin
+    camera.lookAt(0, 0, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.target.set(0, 0, 0); // Controls target the scene center
+    controls.target.set(0, 0, 0);
     controls.update();
 
-    // Add lighting
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
-    directionalLight.position.set(5, 5, 5);
-    scene.add(directionalLight);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    // Improved lighting
+    const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
+    directionalLight1.position.set(5, 5, 5);
+    scene.add(directionalLight1);
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight2.position.set(-5, 5, -5);
+    scene.add(directionalLight2);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
-    // Add test cube for debugging
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const cube = new THREE.Mesh(geometry, material);
-    cube.position.set(0, 0, 0); // Explicitly at origin
-    scene.add(cube);
-
-    // Animation loop
     const animate = () => {
       requestAnimationFrame(animate);
       controls.update();
@@ -64,7 +55,6 @@ function ThreeViewer({ gltfUrl }) {
     };
     animate();
 
-    // Handle resize
     const handleResize = () => {
       const width = mount.clientWidth;
       const height = mount.clientHeight;
@@ -74,14 +64,12 @@ function ThreeViewer({ gltfUrl }) {
     };
     window.addEventListener("resize", handleResize);
 
-    // Cleanup
     return () => {
       window.removeEventListener("resize", handleResize);
       mount.removeChild(renderer.domElement);
     };
   }, [camera, controls, renderer, scene]);
 
-  // Load and position the GLB model
   useEffect(() => {
     if (gltfUrl) {
       console.log("Loading GLTF from:", gltfUrl);
@@ -90,27 +78,33 @@ function ThreeViewer({ gltfUrl }) {
         gltfUrl,
         (gltf) => {
           console.log("GLTF loaded successfully");
-          // Temporarily disable cleanup to keep test cube
-          // while (scene.children.length > 2) {
-          //   scene.remove(scene.children[2]);
-          // }
-          scene.add(gltf.scene);
+          // Clear previous models, keep lights
+          scene.children = scene.children.filter((child) => child.isLight);
+          const model = gltf.scene;
+          scene.add(model);
 
-          // Center the model
-          const box = new THREE.Box3().setFromObject(gltf.scene);
+          // Default material if none exists
+          model.traverse((child) => {
+            if (child.isMesh && !child.material) {
+              child.material = new THREE.MeshStandardMaterial({
+                color: 0xff8000, // Orange fallback
+                metalness: 0.5,
+                roughness: 0.5,
+              });
+            }
+          });
+
+          const box = new THREE.Box3().setFromObject(model);
           const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3()).length();
-          gltf.scene.position.sub(center);
-
-          // Scale if too large
+          model.position.sub(center);
           if (size > 10) {
             const scale = 10 / size;
-            gltf.scene.scale.set(scale, scale, scale);
+            model.scale.set(scale, scale, scale);
           }
 
-          // Adjust camera
           camera.position.set(0, size / 2, size * 2);
-          camera.lookAt(0, 0, 0); // Ensure camera looks at center
+          camera.lookAt(0, 0, 0);
           controls.target.set(0, 0, 0);
           controls.update();
 
